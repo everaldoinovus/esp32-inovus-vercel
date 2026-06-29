@@ -1,15 +1,21 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '../../lib/supabase'
-import { useRouter } from 'next/navigation'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
+
+  useEffect(() => {
+    // Se já está logado, vai direto pro dashboard
+    const supabase = createClient()
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) window.location.href = '/'
+    })
+  }, [])
 
   const handleLogin = async () => {
     setLoading(true)
@@ -20,8 +26,7 @@ export default function Login() {
       setError('Email ou senha incorretos.')
       setLoading(false)
     } else {
-      router.push('/')
-      router.refresh()
+      window.location.href = '/'
     }
   }
 
@@ -54,4 +59,4 @@ export default function Login() {
       </div>
     </main>
   )
-      }
+              }
