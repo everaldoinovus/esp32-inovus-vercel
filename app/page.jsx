@@ -36,6 +36,8 @@ export default function Dashboard() {
   const [profile, setProfile] = useState(null)
   const [authReady, setAuthReady] = useState(false)
   const clientRef = useRef(null)
+  const profileRef = useRef(null)  // acesso ao profile dentro dos closures MQTT
+  const pendingRef = useRef(null)  // comando pendente: { novoEstado, timeoutId }
 
   useEffect(() => {
     const supabase = createClient()
@@ -49,6 +51,7 @@ export default function Dashboard() {
       const { data } = await supabase
         .from('profiles').select('*').eq('id', session.user.id).single()
       setProfile(data)
+      profileRef.current = data
       setAuthReady(true)
     })
 
@@ -58,11 +61,37 @@ export default function Dashboard() {
       password: process.env.NEXT_PUBLIC_MQTT_PASSWORD,
       clientId: 'dashboard-' + Math.random().toString(16).slice(2),
     })
-    client.on('connect', () => { setConectado(true); client.subscribe('esp32/led/status') })
+    // 'connect' = browser conectou ao broker HiveMQ, NAO significa ESP32 online.
+    // Apenas inscrevemos no topico; 'conectado' so vira true quando a placa responder.
+    client.on('connect', () => { client.subscribe('esp32/led/status') })
+
     client.on('message', (topic, payload) => {
-      if (topic === 'esp32/led/status') { setLedStatus(payload.toString() === 'true'); setLoading(false) }
+      if (topic !== 'esp32/led/status') return
+      const novoLedStatus = payload.toString() === 'true'
+      setLedStatus(novoLedStatus)
+      setConectado(true) // a placa respondeu: ela esta online
+
+      if (pendingRef.current) {
+        // Ha um comando aguardando confirmacao
+        const { novoEstado, timeoutId } = pendingRef.current
+        clearTimeout(timeoutId)
+        pendingRef.current = null
+        setLoading(false)
+        // Registra no relatorio SOMENTE se a placa confirmou o estado esperado
+        if (novoLedStatus === novoEstado) {
+          fetch('/api/log-event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ state: novoLedStatus, userId: profileRef.current?.id }),
+          }).catch(() => {})
+        }
+      } else {
+        setLoading(false)
+      }
     })
+
     client.on('disconnect', () => setConectado(false))
+    client.on('close', () => setConectado(false))
     client.on('error', () => setConectado(false))
     clientRef.current = client
     return () => client.end()
@@ -74,13 +103,16 @@ export default function Dashboard() {
     setLoading(true)
     clientRef.current.publish('esp32/led/comando', novoEstado ? 'true' : 'false')
 
-    // Fase 7 — registra o evento para o relatório de tempo ligado/desligado.
-    // Fire-and-forget: uma falha aqui não pode travar o controle do LED.
-    fetch('/api/log-event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state: novoEstado, userId: profile?.id }),
-    }).catch(() => {})
+    // Aguarda confirmacao da placa via 'esp32/led/status'.
+    // Se nao houver resposta em 5s: cancela o loading e marca equipamento offline.
+    // O registro no relatorio so ocorre quando a placa confirmar (ver handler de 'message').
+    const timeoutId = setTimeout(() => {
+      setLoading(false)
+      setConectado(false) // placa nao respondeu -> offline
+      pendingRef.current = null
+    }, 5000)
+
+    pendingRef.current = { novoEstado, timeoutId }
   }
 
   const handleLogout = async () => {
