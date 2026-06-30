@@ -33,8 +33,8 @@ export default function Login() {
   return (
     <main style={{ minHeight: '100vh', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '40px', width: '100%', maxWidth: '380px' }}>
-        <h1 style={{ color: '#f1f5f9', fontSize: '1.25rem', marginBottom: '0.25rem', textAlign: 'center' }}>INOVUS</h1>
-        <p style={{ color: '#64748b', fontSize: '0.875rem', textAlign: 'center', marginBottom: '2rem' }}>Controle ESP32</p>
+        <h1 style={{ color: '#f1f5f9', fontSize: '1.25rem', marginBottom: '0.25rem', textAlign: 'center' }}>ECNC</h1>
+        <p style={{ color: '#64748b', fontSize: '0.875rem', textAlign: 'center', marginBottom: '2rem' }}>Monitor Máquina Laser</p>
 
         <div style={{ marginBottom: '1rem' }}>
           <label style={{ color: '#94a3b8', fontSize: '0.8rem', display: 'block', marginBottom: '6px' }}>Email</label>
