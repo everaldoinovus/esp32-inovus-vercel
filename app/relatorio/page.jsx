@@ -169,7 +169,7 @@ function GraficoLinhaHoje({ eventos, eventoAnterior }) {
   const marcas = [0, 6, 12, 18, 24]
 
   return (
-    <svg viewBox={`0 0 ${largura} ${altura}`} style={{ width: '100%', height: 'auto', maxWidth: largura, display: 'block' }}>
+    <svg viewBox={`0 0 ${largura} ${altura}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
       <line x1={margemEsq} y1={yDesligado} x2={largura - margemDir} y2={yDesligado} stroke="#334155" strokeWidth="1" />
       <text x={margemEsq - 6} y={yLigado + 4} textAnchor="end" fontSize="9" fill="#22c55e">Ligada</text>
       <text x={margemEsq - 6} y={yDesligado + 4} textAnchor="end" fontSize="9" fill="#94a3b8">Desligada</text>
