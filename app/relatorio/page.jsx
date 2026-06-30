@@ -31,9 +31,18 @@ function formatarDuracao(segundos) {
   return `${s}s`
 }
 
+function pad2(n) {
+  return String(n).padStart(2, '0')
+}
+
+// Usa os componentes de data LOCAIS (não toISOString/UTC) para que o bucket
+// "hoje"/dia coincida com o fuso horário do navegador do usuário.
 function chaveBucket(data, periodo) {
-  if (periodo === 'hoje') return data.toISOString().slice(0, 13)
-  return data.toISOString().slice(0, 10)
+  const ano = data.getFullYear()
+  const mes = pad2(data.getMonth() + 1)
+  const dia = pad2(data.getDate())
+  if (periodo === 'hoje') return `${ano}-${mes}-${dia}T${pad2(data.getHours())}`
+  return `${ano}-${mes}-${dia}`
 }
 
 function labelBucket(chave, periodo) {
@@ -66,9 +75,9 @@ function GraficoBarras({ buckets }) {
     return <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Sem dados no período selecionado.</p>
   }
   const largura = 720
-  const altura = 240
+  const altura = 220
   const margemBaixo = 28
-  const margemTopo = 70
+  const margemTopo = 16
   const maxTotal = Math.max(...buckets.map(b => b.ligado + b.desligado), 1)
   const colWidth = (largura - 40) / buckets.length
   const larguraBarra = Math.max(4, Math.min(40, colWidth - 10))
@@ -85,18 +94,24 @@ function GraficoBarras({ buckets }) {
         const yDesligado = baseY - hDesligado
         const yLigado = yDesligado - hLigado
         const total = b.ligado + b.desligado
+        const totalH = hLigado + hDesligado
         const pctLigado = total > 0 ? Math.round((b.ligado / total) * 100) : null
         const pctDesligado = pctLigado != null ? 100 - pctLigado : null
         const xLabel = x + larguraBarra / 2
-        const yLabel = Math.max(12, yLigado - 6)
+        const yLabelCentro = baseY - totalH / 2 + 3.5
         return (
           <g key={b.chave}>
             {hDesligado > 0 && <rect x={x} y={yDesligado} width={larguraBarra} height={hDesligado} fill="#475569" rx="2" />}
             {hLigado > 0 && <rect x={x} y={yLigado} width={larguraBarra} height={hLigado} fill="#22c55e" rx="2" />}
-            {pctLigado != null && (
-              <text x={xLabel} y={yLabel} textAnchor="start" fontSize="8" fill="#94a3b8"
-                transform={`rotate(-90 ${xLabel} ${yLabel})`}>
-                {`${pctLigado}% lig. / ${pctDesligado}% desl.`}
+            {pctLigado != null && <title>{`${pctLigado}% ligada / ${pctDesligado}% desligada`}</title>}
+            {pctLigado != null && totalH >= 14 && (
+              <text x={xLabel} y={yLabelCentro} textAnchor="middle" fontSize="11" fontWeight="700" fill="#f8fafc">
+                {`${pctLigado}%`}
+              </text>
+            )}
+            {pctLigado != null && totalH < 14 && (
+              <text x={xLabel} y={Math.min(yLigado, yDesligado) - 5} textAnchor="middle" fontSize="9" fontWeight="700" fill="#94a3b8">
+                {`${pctLigado}%`}
               </text>
             )}
             <text x={xLabel} y={altura - 10} textAnchor="middle" fontSize="10" fill="#64748b">{b.label}</text>
