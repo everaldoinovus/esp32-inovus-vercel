@@ -66,9 +66,9 @@ function GraficoBarras({ buckets }) {
     return <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Sem dados no período selecionado.</p>
   }
   const largura = 720
-  const altura = 220
+  const altura = 240
   const margemBaixo = 28
-  const margemTopo = 10
+  const margemTopo = 70
   const maxTotal = Math.max(...buckets.map(b => b.ligado + b.desligado), 1)
   const colWidth = (largura - 40) / buckets.length
   const larguraBarra = Math.max(4, Math.min(40, colWidth - 10))
@@ -84,13 +84,84 @@ function GraficoBarras({ buckets }) {
         const baseY = altura - margemBaixo
         const yDesligado = baseY - hDesligado
         const yLigado = yDesligado - hLigado
+        const total = b.ligado + b.desligado
+        const pctLigado = total > 0 ? Math.round((b.ligado / total) * 100) : null
+        const pctDesligado = pctLigado != null ? 100 - pctLigado : null
+        const xLabel = x + larguraBarra / 2
+        const yLabel = Math.max(12, yLigado - 6)
         return (
           <g key={b.chave}>
             {hDesligado > 0 && <rect x={x} y={yDesligado} width={larguraBarra} height={hDesligado} fill="#475569" rx="2" />}
             {hLigado > 0 && <rect x={x} y={yLigado} width={larguraBarra} height={hLigado} fill="#22c55e" rx="2" />}
-            <text x={x + larguraBarra / 2} y={altura - 10} textAnchor="middle" fontSize="10" fill="#64748b">{b.label}</text>
+            {pctLigado != null && (
+              <text x={xLabel} y={yLabel} textAnchor="start" fontSize="8" fill="#94a3b8"
+                transform={`rotate(-90 ${xLabel} ${yLabel})`}>
+                {`${pctLigado}% lig. / ${pctDesligado}% desl.`}
+              </text>
+            )}
+            <text x={xLabel} y={altura - 10} textAnchor="middle" fontSize="10" fill="#64748b">{b.label}</text>
           </g>
         )
+      })}
+    </svg>
+  )
+}
+
+// Linha do tempo de hoje: nivel alto enquanto a maquina fica ligada,
+// volta a zero (linha de base) quando desliga. Sempre mostra o dia atual,
+// independente do filtro de periodo selecionado acima.
+function GraficoLinhaHoje({ eventos, eventoAnterior }) {
+  if (!eventoAnterior && eventos.length === 0) {
+    return <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Sem dados para hoje ainda.</p>
+  }
+
+  const agora = new Date()
+  const meiaNoite = new Date(agora)
+  meiaNoite.setHours(0, 0, 0, 0)
+
+  const largura = 720
+  const altura = 160
+  const margemEsq = 60
+  const margemDir = 10
+  const margemBaixo = 24
+  const margemTopo = 16
+  const domMs = 24 * 60 * 60 * 1000
+  const xScale = (t) => margemEsq + ((t.getTime() - meiaNoite.getTime()) / domMs) * (largura - margemEsq - margemDir)
+  const yLigado = margemTopo
+  const yDesligado = altura - margemBaixo
+
+  let inicioDesenho = meiaNoite
+  let estadoAtual = eventoAnterior ? eventoAnterior.state : null
+  if (!eventoAnterior) {
+    inicioDesenho = new Date(eventos[0].triggered_at)
+    estadoAtual = eventos[0].state
+  }
+
+  const pontos = [{ t: inicioDesenho, state: estadoAtual }]
+  eventos.forEach((ev, idx) => {
+    if (!eventoAnterior && idx === 0) return
+    const t = new Date(ev.triggered_at)
+    pontos.push({ t, state: estadoAtual })
+    estadoAtual = ev.state
+    pontos.push({ t, state: estadoAtual })
+  })
+  pontos.push({ t: agora, state: estadoAtual })
+
+  const path = pontos
+    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(p.t).toFixed(1)} ${(p.state ? yLigado : yDesligado).toFixed(1)}`)
+    .join(' ')
+
+  const marcas = [0, 6, 12, 18, 24]
+
+  return (
+    <svg viewBox={`0 0 ${largura} ${altura}`} style={{ width: '100%', height: 'auto', maxWidth: largura, display: 'block' }}>
+      <line x1={margemEsq} y1={yDesligado} x2={largura - margemDir} y2={yDesligado} stroke="#334155" strokeWidth="1" />
+      <text x={margemEsq - 6} y={yLigado + 4} textAnchor="end" fontSize="9" fill="#22c55e">Ligada</text>
+      <text x={margemEsq - 6} y={yDesligado + 4} textAnchor="end" fontSize="9" fill="#94a3b8">Desligada</text>
+      <path d={path} fill="none" stroke="#22c55e" strokeWidth="2" />
+      {marcas.map(h => {
+        const x = xScale(new Date(meiaNoite.getTime() + h * 60 * 60 * 1000))
+        return <text key={h} x={x} y={altura - 8} textAnchor="middle" fontSize="9" fill="#64748b">{h}h</text>
       })}
     </svg>
   )
@@ -104,6 +175,9 @@ export default function Relatorio() {
   const [loading, setLoading] = useState(true)
   const [periodo, setPeriodo] = useState('7dias')
   const [erro, setErro] = useState('')
+  const [eventosHoje, setEventosHoje] = useState([])
+  const [eventoAnteriorHoje, setEventoAnteriorHoje] = useState(null)
+  const [loadingHoje, setLoadingHoje] = useState(true)
 
   useEffect(() => {
     const supabase = createClient()
@@ -126,6 +200,39 @@ export default function Relatorio() {
     if (!authReady) return
     carregarEventos()
   }, [authReady, periodo])
+
+  // Dados de hoje para o gráfico de linha — independem do filtro de período.
+  useEffect(() => {
+    if (!authReady) return
+    carregarHoje()
+  }, [authReady])
+
+  async function carregarHoje() {
+    setLoadingHoje(true)
+    const supabase = createClient()
+    const inicio = inicioDoPeriodo('hoje')
+
+    const [{ data: dados, error: erroEv }, { data: anterior, error: erroAnt }] = await Promise.all([
+      supabase
+        .from('led_events')
+        .select('state, triggered_at')
+        .gte('triggered_at', inicio.toISOString())
+        .order('triggered_at', { ascending: true }),
+      supabase
+        .from('led_events')
+        .select('state, triggered_at')
+        .lt('triggered_at', inicio.toISOString())
+        .order('triggered_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+
+    if (!erroEv && !erroAnt) {
+      setEventosHoje(dados || [])
+      setEventoAnteriorHoje(anterior || null)
+    }
+    setLoadingHoje(false)
+  }
 
   async function carregarEventos() {
     setLoading(true)
@@ -265,6 +372,11 @@ export default function Relatorio() {
           </span>
         </div>
         {loading ? <p style={{ color: '#64748b' }}>Carregando...</p> : <GraficoBarras buckets={stats.buckets} />}
+      </div>
+
+      <div style={{ ...s.card, marginBottom: '1.5rem' }}>
+        <p style={s.title}>Estado da máquina hoje</p>
+        {loadingHoje ? <p style={{ color: '#64748b' }}>Carregando...</p> : <GraficoLinhaHoje eventos={eventosHoje} eventoAnterior={eventoAnteriorHoje} />}
       </div>
 
       <div style={s.card}>

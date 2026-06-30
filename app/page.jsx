@@ -123,7 +123,7 @@ export default function Dashboard() {
       {canControl ? (
         <button onClick={toggleLed} disabled={!conectado || loading}
           style={{ padding: '14px 40px', borderRadius: '8px', border: 'none', fontSize: '1rem', fontWeight: '600', cursor: conectado && !loading ? 'pointer' : 'not-allowed', background: ledStatus ? '#ef4444' : '#22c55e', color: 'white', opacity: conectado && !loading ? 1 : 0.5, transition: 'all 0.2s ease' }}>
-          {loading ? 'Aguardando...' : ledStatus ? 'Apagar LED' : 'Ligar LED'}
+          {loading ? 'Aguardando...' : ledStatus ? 'Desligar' : 'Ligar'}
         </button>
       ) : (
         <p style={{ color: '#334155', fontSize: '0.8rem' }}>Modo somente leitura</p>
