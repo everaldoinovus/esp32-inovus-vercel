@@ -4,9 +4,10 @@ import { useEffect, useState, useRef } from 'react'
 import mqtt from 'mqtt'
 import { createClient } from '../lib/supabase'
 
+// null = verificando (cinza), true = conectado (verde), false = desconectado (vermelho c/ risco)
 function WifiIcon({ conectado, size = 16 }) {
-  const cor = conectado ? '#22c55e' : '#ef4444'
-  if (conectado) {
+  const cor = conectado === true ? '#22c55e' : conectado === false ? '#ef4444' : '#64748b'
+  if (conectado !== false) {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={cor} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M5 12.55a11 11 0 0 1 14.08 0" />
@@ -31,23 +32,22 @@ function WifiIcon({ conectado, size = 16 }) {
 
 export default function Dashboard() {
   const [ledStatus, setLedStatus] = useState(null)
-  const [conectado, setConectado] = useState(false)
+  const [conectado, setConectado] = useState(null) // null=verificando, true=online, false=offline
   const [loading, setLoading] = useState(false)
   const [profile, setProfile] = useState(null)
   const [authReady, setAuthReady] = useState(false)
-  const clientRef = useRef(null)
-  const profileRef = useRef(null)  // acesso ao profile dentro dos closures MQTT
-  const pendingRef = useRef(null)  // comando pendente: { novoEstado, timeoutId }
+
+  const clientRef    = useRef(null)
+  const profileRef   = useRef(null)   // acesso ao profile dentro dos closures MQTT
+  const pendingRef   = useRef(null)   // { novoEstado, timeoutId, isProbe }
+  const ledStatusRef = useRef(null)   // espelho de ledStatus para closures
+  const conectadoRef = useRef(null)   // espelho de conectado para closures
 
   useEffect(() => {
     const supabase = createClient()
 
-    // Verifica sessão e carrega perfil
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) {
-        window.location.href = '/login'
-        return
-      }
+      if (!session) { window.location.href = '/login'; return }
       const { data } = await supabase
         .from('profiles').select('*').eq('id', session.user.id).single()
       setProfile(data)
@@ -55,64 +55,100 @@ export default function Dashboard() {
       setAuthReady(true)
     })
 
-    // Conexão MQTT
     const client = mqtt.connect(process.env.NEXT_PUBLIC_MQTT_BROKER, {
       username: process.env.NEXT_PUBLIC_MQTT_USER,
       password: process.env.NEXT_PUBLIC_MQTT_PASSWORD,
       clientId: 'dashboard-' + Math.random().toString(16).slice(2),
     })
-    // 'connect' = browser conectou ao broker HiveMQ, NAO significa ESP32 online.
-    // Apenas inscrevemos no topico; 'conectado' so vira true quando a placa responder.
-    client.on('connect', () => { client.subscribe('esp32/led/status') })
+
+    client.on('connect', () => {
+      client.subscribe('esp32/led/status')
+
+      // Probe automático após 1.5 s (tempo para o broker entregar msg retida).
+      // Reenvia o estado atual à ESP32 de forma idempotente; se ela responder
+      // → online confirmado; se não responder em 4 s → offline confirmado.
+      setTimeout(() => {
+        if (conectadoRef.current !== null) return // já foi confirmado por outro meio
+
+        if (ledStatusRef.current !== null) {
+          // Temos estado retido → probe seguro (operação idempotente)
+          const timeoutId = setTimeout(() => {
+            if (conectadoRef.current === null) {
+              setConectado(false)
+              conectadoRef.current = false
+            }
+            pendingRef.current = null
+          }, 4000)
+          pendingRef.current = { novoEstado: ledStatusRef.current, timeoutId, isProbe: true }
+          client.publish('esp32/led/comando', ledStatusRef.current ? 'true' : 'false')
+        } else {
+          // Sem msg retida → não há estado para probe seguro; espera mais 3 s
+          setTimeout(() => {
+            if (conectadoRef.current === null) {
+              setConectado(false)
+              conectadoRef.current = false
+            }
+          }, 3000)
+        }
+      }, 1500)
+    })
 
     client.on('message', (topic, payload) => {
       if (topic !== 'esp32/led/status') return
       const novoLedStatus = payload.toString() === 'true'
       setLedStatus(novoLedStatus)
-      setConectado(true) // a placa respondeu: ela esta online
+      ledStatusRef.current = novoLedStatus
 
       if (pendingRef.current) {
-        // Ha um comando aguardando confirmacao
-        const { novoEstado, timeoutId } = pendingRef.current
+        const { novoEstado, timeoutId, isProbe } = pendingRef.current
         clearTimeout(timeoutId)
         pendingRef.current = null
-        setLoading(false)
-        // Registra no relatorio SOMENTE se a placa confirmou o estado esperado
-        if (novoLedStatus === novoEstado) {
-          fetch('/api/log-event', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ state: novoLedStatus, userId: profileRef.current?.id }),
-          }).catch(() => {})
+
+        // A placa respondeu → confirmada online
+        setConectado(true)
+        conectadoRef.current = true
+
+        if (!isProbe) {
+          // Resposta a um comando real do usuário
+          setLoading(false)
+          if (novoLedStatus === novoEstado) {
+            // Só registra se o estado confirmado bate com o comando enviado
+            fetch('/api/log-event', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ state: novoLedStatus, userId: profileRef.current?.id }),
+            }).catch(() => {})
+          }
         }
-      } else {
-        setLoading(false)
+        // isProbe: apenas confirma conexão, sem log de evento nem alteração de loading
       }
+      // Mensagem sem pendingRef = msg retida no carregamento inicial
+      // → atualiza ledStatus, mas conectado permanece null até o probe responder
     })
 
-    client.on('disconnect', () => setConectado(false))
-    client.on('close', () => setConectado(false))
-    client.on('error', () => setConectado(false))
+    const marcarOffline = () => { setConectado(false); conectadoRef.current = false }
+    client.on('disconnect', marcarOffline)
+    client.on('close',      marcarOffline)
+    client.on('error',      marcarOffline)
     clientRef.current = client
     return () => client.end()
   }, [])
 
   const toggleLed = () => {
-    if (!clientRef.current || !conectado) return
+    if (!clientRef.current || conectado === false) return
     const novoEstado = !ledStatus
     setLoading(true)
     clientRef.current.publish('esp32/led/comando', novoEstado ? 'true' : 'false')
 
-    // Aguarda confirmacao da placa via 'esp32/led/status'.
-    // Se nao houver resposta em 5s: cancela o loading e marca equipamento offline.
-    // O registro no relatorio so ocorre quando a placa confirmar (ver handler de 'message').
+    // Se não houver resposta em 5 s → placa offline
     const timeoutId = setTimeout(() => {
       setLoading(false)
-      setConectado(false) // placa nao respondeu -> offline
+      setConectado(false)
+      conectadoRef.current = false
       pendingRef.current = null
     }, 5000)
 
-    pendingRef.current = { novoEstado, timeoutId }
+    pendingRef.current = { novoEstado, timeoutId, isProbe: false }
   }
 
   const handleLogout = async () => {
@@ -122,8 +158,15 @@ export default function Dashboard() {
   }
 
   const canControl = profile?.role === 'admin' || profile?.role === 'operator'
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin    = profile?.role === 'admin'
   const ROLE_LABELS = { admin: 'Admin', operator: 'Operador', viewer: 'Visualizador' }
+
+  const labelConexao = conectado === true
+    ? 'Equipamento conectado'
+    : conectado === false
+    ? 'Equipamento desconectado'
+    : 'Verificando equipamento...'
+  const corConexao = conectado === true ? '#22c55e' : conectado === false ? '#ef4444' : '#64748b'
 
   if (!authReady) {
     return (
@@ -146,9 +189,7 @@ export default function Dashboard() {
           )}
           <span style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
             <WifiIcon conectado={conectado} />
-            <span style={{ color: conectado ? '#22c55e' : '#ef4444', fontSize: '0.8rem' }}>
-              {conectado ? 'Equipamento conectado' : 'Equipamento desconectado'}
-            </span>
+            <span style={{ color: corConexao, fontSize: '0.8rem' }}>{labelConexao}</span>
           </span>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
@@ -178,8 +219,8 @@ export default function Dashboard() {
       </p>
 
       {canControl ? (
-        <button onClick={toggleLed} disabled={!conectado || loading}
-          style={{ padding: '14px 40px', borderRadius: '8px', border: 'none', fontSize: '1rem', fontWeight: '600', cursor: conectado && !loading ? 'pointer' : 'not-allowed', background: ledStatus ? '#ef4444' : '#22c55e', color: 'white', opacity: conectado && !loading ? 1 : 0.5, transition: 'all 0.2s ease' }}>
+        <button onClick={toggleLed} disabled={conectado === false || loading}
+          style={{ padding: '14px 40px', borderRadius: '8px', border: 'none', fontSize: '1rem', fontWeight: '600', cursor: conectado !== false && !loading ? 'pointer' : 'not-allowed', background: ledStatus ? '#ef4444' : '#22c55e', color: 'white', opacity: conectado !== false && !loading ? 1 : 0.5, transition: 'all 0.2s ease' }}>
           {loading ? 'Aguardando...' : ledStatus ? 'Desligar' : 'Ligar'}
         </button>
       ) : (

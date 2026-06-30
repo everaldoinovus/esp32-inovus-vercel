@@ -318,7 +318,15 @@ export default function Relatorio() {
       desligado: buckets[chave].desligado,
     }))
 
-    return { ligadoSeg, desligadoSeg, acionamentos: eventos.length, buckets: bucketsOrdenados }
+    // Sessao em aberto: ultimo estado conhecido é 'ligado' e sem encerrramento registrado.
+    // O tempo exibido inclui o período até 'agora', mas o encerramento real pode ser desconhecido.
+    const ultimoEvento = ascendente.length > 0 ? ascendente[ascendente.length - 1] : null
+    const sessaoAberta = (
+      (ultimoEvento?.state === true && ultimoEvento?.duration_seconds == null) ||
+      (eventoAnterior?.state === true && ascendente.length === 0)
+    )
+
+    return { ligadoSeg, desligadoSeg, acionamentos: eventos.length, buckets: bucketsOrdenados, sessaoAberta }
   }, [eventos, eventoAnterior, periodo])
 
   const s = {
@@ -365,6 +373,12 @@ export default function Relatorio() {
         <div style={s.card}>
           <p style={s.title}>Tempo total ligado</p>
           <p style={{ fontSize: '1.5rem', fontWeight: '700', color: '#22c55e' }}>{formatarDuracao(stats.ligadoSeg)}</p>
+          {stats.sessaoAberta && (
+            <p style={{ fontSize: '0.75rem', color: '#f59e0b', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
+              Sessão em andamento — encerramento não confirmado
+            </p>
+          )}
         </div>
         <div style={s.card}>
           <p style={s.title}>Tempo total desligado</p>
