@@ -89,12 +89,10 @@ export default function Dashboard() {
           )}
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
-          {canControl && (
-            <button onClick={() => window.location.href = '/relatorio'}
-              style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: '0.8rem', cursor: 'pointer' }}>
-              Relatório
-            </button>
-          )}
+          <button onClick={() => window.location.href = '/relatorio'}
+            style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: '0.8rem', cursor: 'pointer' }}>
+            Relatório
+          </button>
           {isAdmin && (
             <button onClick={() => window.location.href = '/admin'}
               style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: '0.8rem', cursor: 'pointer' }}>

@@ -115,11 +115,8 @@ export default function Relatorio() {
       const { data } = await supabase
         .from('profiles').select('*').eq('id', session.user.id).single()
 
-      const podeVer = data?.role === 'admin' || data?.role === 'operator'
-      if (!podeVer) {
-        window.location.href = '/'
-        return
-      }
+      // Fase 7.4 (atualizado): relatório agora é acessível a qualquer
+      // perfil autenticado, incluindo Visualizador.
       setProfile(data)
       setAuthReady(true)
     })
