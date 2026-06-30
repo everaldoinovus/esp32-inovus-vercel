@@ -217,7 +217,7 @@ export default function Relatorio() {
   return (
     <div style={s.page}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.25rem' }}>Relatório — Tempo de LED</h1>
+        <h1 style={{ fontSize: '1.25rem' }}>Relatório — Uso da máquina</h1>
         <button onClick={() => window.location.href = '/'} style={{ ...s.btn, background: '#334155', color: '#94a3b8' }}>
           Voltar
         </button>

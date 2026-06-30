@@ -87,6 +87,12 @@ export default function Dashboard() {
               {ROLE_LABELS[profile.role]}
             </span>
           )}
+          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: conectado ? '#22c55e' : '#ef4444' }} />
+            <span style={{ color: conectado ? '#22c55e' : '#ef4444', fontSize: '0.8rem' }}>
+              {conectado ? 'Equipamento conectado' : 'Equipamento desconectado'}
+            </span>
+          </span>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button onClick={() => window.location.href = '/relatorio'}
@@ -106,17 +112,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <h1 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', color: '#94a3b8' }}>INOVUS — Controle ESP32</h1>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3rem', fontSize: '0.875rem' }}>
-        <div style={{ width: 10, height: 10, borderRadius: '50%', background: conectado ? '#22c55e' : '#ef4444' }} />
-        <span style={{ color: conectado ? '#22c55e' : '#ef4444' }}>{conectado ? 'Broker conectado' : 'Desconectado'}</span>
-      </div>
+      <h1 style={{ fontSize: '1.5rem', marginBottom: '3rem', color: '#94a3b8' }}>ECNC — Monitor Máquina Laser</h1>
 
       <div style={{ width: 120, height: 120, borderRadius: '50%', background: ledStatus ? '#facc15' : '#1e293b', boxShadow: ledStatus ? '0 0 60px 20px #facc1566' : 'none', border: '3px solid #334155', marginBottom: '2rem', transition: 'all 0.3s ease' }} />
 
       <p style={{ marginBottom: '2rem', color: '#64748b', fontSize: '0.875rem' }}>
-        {ledStatus === null ? 'Aguardando status...' : ledStatus ? 'LED LIGADO' : 'LED APAGADO'}
+        {ledStatus === null ? 'Aguardando status...' : ledStatus ? 'MÁQUINA LIGADA' : 'MÁQUINA DESLIGADA'}
       </p>
 
       {canControl ? (
