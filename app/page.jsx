@@ -45,8 +45,17 @@ export default function Dashboard() {
 
   const toggleLed = () => {
     if (!clientRef.current || !conectado) return
+    const novoEstado = !ledStatus
     setLoading(true)
-    clientRef.current.publish('esp32/led/comando', ledStatus ? 'false' : 'true')
+    clientRef.current.publish('esp32/led/comando', novoEstado ? 'true' : 'false')
+
+    // Fase 7 — registra o evento para o relatório de tempo ligado/desligado.
+    // Fire-and-forget: uma falha aqui não pode travar o controle do LED.
+    fetch('/api/log-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: novoEstado, userId: profile?.id }),
+    }).catch(() => {})
   }
 
   const handleLogout = async () => {
@@ -80,6 +89,12 @@ export default function Dashboard() {
           )}
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
+          {canControl && (
+            <button onClick={() => window.location.href = '/relatorio'}
+              style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: '0.8rem', cursor: 'pointer' }}>
+              Relatório
+            </button>
+          )}
           {isAdmin && (
             <button onClick={() => window.location.href = '/admin'}
               style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: '0.8rem', cursor: 'pointer' }}>
@@ -116,4 +131,4 @@ export default function Dashboard() {
       )}
     </main>
   )
-        }
+}
